@@ -72,8 +72,9 @@ func (b *Builder) Build(ctx context.Context, out io.Writer, a *latest.Artifact, 
 	// ignore useCLI boolean if buildkit is enabled since buildkit is only implemented for docker CLI at the moment in skaffold.
 	// we might consider a different approach in the future.
 	// use CLI for cross-platform builds
-	if b.useCLI || (b.useBuildKit != nil && *b.useBuildKit) || len(a.DockerArtifact.CliFlags) > 0 || matcher.IsNotEmpty() {
-		imageID, err = b.dockerCLIBuild(ctx, output.GetUnderlyingWriter(out), a.ImageName, a.Workspace, dockerfile, a.ArtifactType.DockerArtifact, opts, pl)
+	var buildx = true
+	if buildx || b.useCLI || (b.useBuildKit != nil && *b.useBuildKit) || len(a.DockerArtifact.CliFlags) > 0 || matcher.IsNotEmpty() {
+		imageID, err = b.dockerCLIBuild(ctx, output.GetUnderlyingWriter(out), a.ImageName, a.Workspace, dockerfile, a.ArtifactType.DockerArtifact, opts, pl, matcher)
 	} else {
 		imageID, err = b.localDocker.Build(ctx, out, a.Workspace, a.ImageName, a.ArtifactType.DockerArtifact, opts)
 	}
@@ -82,7 +83,7 @@ func (b *Builder) Build(ctx context.Context, out io.Writer, a *latest.Artifact, 
 		return "", newBuildError(err, b.cfg)
 	}
 
-	if b.pushImages {
+	if !buildx && b.pushImages {
 		// TODO (tejaldesai) Remove https://github.com/GoogleContainerTools/skaffold/blob/main/pkg/skaffold/errors/err_map.go#L56
 		// and instead define a pushErr() method here.
 		return b.localDocker.Push(ctx, out, tag)
@@ -91,8 +92,8 @@ func (b *Builder) Build(ctx context.Context, out io.Writer, a *latest.Artifact, 
 	return imageID, nil
 }
 
-func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string, workspace string, dockerfilePath string, a *latest.DockerArtifact, opts docker.BuildOptions, pl v1.Platform) (string, error) {
-	args := []string{"build", workspace, "--file", dockerfilePath, "-t", opts.Tag}
+func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string, workspace string, dockerfilePath string, a *latest.DockerArtifact, opts docker.BuildOptions, pl v1.Platform, platforms platform.Matcher) (string, error) {
+	args := []string{"buildx", "build", workspace, "--file", dockerfilePath, "-t", opts.Tag}
 	imgRef, err := docker.ParseReference(opts.Tag)
 	if err != nil {
 		return "", fmt.Errorf("couldn't parse image tag: %w", err)
@@ -110,14 +111,17 @@ func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string
 	if err != nil {
 		return "", fmt.Errorf("getting docker build args: %w", err)
 	}
+	if b.pushImages {
+		cliArgs = append(cliArgs, "--push")
+	}
 	args = append(args, cliArgs...)
 
 	if b.cfg.Prune() {
 		args = append(args, "--force-rm")
 	}
 
-	if pl.String() != "" {
-		args = append(args, "--platform", pl.String())
+	if platforms.String() != "" {
+		args = append(args, "--platform", platforms.String())
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -142,7 +146,7 @@ func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string
 		return "", tryExecFormatErr(fmt.Errorf("running build: %w", err), errBuffer)
 	}
 
-	return b.localDocker.ImageID(ctx, opts.Tag)
+	return opts.Tag, nil
 }
 
 func (b *Builder) pullCacheFromImages(ctx context.Context, out io.Writer, a *latest.DockerArtifact, pl v1.Platform) error {
