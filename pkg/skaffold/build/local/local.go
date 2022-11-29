@@ -71,6 +71,8 @@ func (b *Builder) buildArtifact(ctx context.Context, out io.Writer, a *latest.Ar
 		return "", err
 	}
 
+	return "", nil // buildx
+
 	if b.pushImages {
 		// only track images for pruning when building with docker
 		// if we're pushing a bazel image, it was built directly to the registry
