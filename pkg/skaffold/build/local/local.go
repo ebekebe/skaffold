@@ -71,6 +71,8 @@ func (b *Builder) buildArtifact(ctx context.Context, out io.Writer, a *latest.Ar
 		return "", err
 	}
 
+	return digestOrImageID, nil // buildx
+
 	if b.pushImages {
 		// only track images for pruning when building with docker
 		// if we're pushing a bazel image, it was built directly to the registry
@@ -94,7 +96,8 @@ func (b *Builder) buildArtifact(ctx context.Context, out io.Writer, a *latest.Ar
 }
 
 func (b *Builder) runBuildForArtifact(ctx context.Context, out io.Writer, a *latest.Artifact, tag string, platforms platform.Matcher) (string, error) {
-	if !b.pushImages {
+	var buildx = true
+	if !buildx && !b.pushImages {
 		// All of the builders will rely on a local Docker:
 		// + Either to build the image,
 		// + Or to docker load it.
