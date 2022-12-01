@@ -71,9 +71,7 @@ func (b *Builder) buildArtifact(ctx context.Context, out io.Writer, a *latest.Ar
 		return "", err
 	}
 
-	if b.local.Buildx {
-		return "", nil
-	}
+	return "", nil // buildx
 
 	if b.pushImages {
 		// only track images for pruning when building with docker

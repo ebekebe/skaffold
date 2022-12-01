@@ -116,6 +116,7 @@ func (b *BuilderMux) Build(ctx context.Context, out io.Writer, tags tag.ImageTag
 			return "", err
 		}
 
+
 		if err := b.cache.AddArtifact(ctx, graph.Artifact{
 			ImageName:   artifact.ImageName,
 			Tag:         built,
