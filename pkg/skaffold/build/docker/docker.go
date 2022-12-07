@@ -74,7 +74,7 @@ func (b *Builder) Build(ctx context.Context, out io.Writer, a *latest.Artifact, 
 	// use CLI for cross-platform builds
 	var buildx = true
 	if b.useCLI || buildx || (b.useBuildKit != nil && *b.useBuildKit) || len(a.DockerArtifact.CliFlags) > 0 || matcher.IsNotEmpty() {
-		imageID, err = b.dockerCLIBuild(ctx, output.GetUnderlyingWriter(out), a.ImageName, a.Workspace, dockerfile, a.ArtifactType.DockerArtifact, opts, pl)
+		imageID, err = b.dockerCLIBuild(ctx, output.GetUnderlyingWriter(out), a.ImageName, a.Workspace, dockerfile, a.ArtifactType.DockerArtifact, opts, pl, matcher)
 	} else {
 		imageID, err = b.localDocker.Build(ctx, out, a.Workspace, a.ImageName, a.ArtifactType.DockerArtifact, opts)
 	}
@@ -92,7 +92,7 @@ func (b *Builder) Build(ctx context.Context, out io.Writer, a *latest.Artifact, 
 	return imageID, nil
 }
 
-func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string, workspace string, dockerfilePath string, a *latest.DockerArtifact, opts docker.BuildOptions, pl v1.Platform) (string, error) {
+func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string, workspace string, dockerfilePath string, a *latest.DockerArtifact, opts docker.BuildOptions, pl v1.Platform, platforms platform.Matcher) (string, error) {
 	args := []string{"buildx", "build", workspace, "--file", dockerfilePath, "-t", opts.Tag}
 	imgRef, err := docker.ParseReference(opts.Tag)
 	if err != nil {
@@ -120,8 +120,8 @@ func (b *Builder) dockerCLIBuild(ctx context.Context, out io.Writer, name string
 		args = append(args, "--force-rm")
 	}
 
-	if pl.String() != "" {
-		args = append(args, "--platform", pl.String())
+	if platforms.String() != "" {
+		args = append(args, "--platform", platforms.String())
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
