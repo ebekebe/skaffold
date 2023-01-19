@@ -101,7 +101,8 @@ func (b *Builder) buildArtifact(ctx context.Context, out io.Writer, a *latest.Ar
 }
 
 func (b *Builder) runBuildForArtifact(ctx context.Context, out io.Writer, a *latest.Artifact, tag string, platforms platform.Matcher) (string, error) {
-	if !b.local.Buildx && !b.pushImages {
+	var buildx = true
+	if !buildx && !b.pushImages {
 		// All of the builders will rely on a local Docker:
 		// + Either to build the image,
 		// + Or to docker load it.
