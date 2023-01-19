@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -149,24 +150,38 @@ type BuildResult struct {
 	ID string
 }
 
+func stacktrace() {
+	var debug_buildx = false
+	if debug_buildx {
+		debug.PrintStack()
+	}
+}
+
 func (l *localDaemon) RawClient() client.CommonAPIClient {
+	stacktrace()
 	return l.apiClient
 }
 
 // Close closes the connection with the local daemon.
 func (l *localDaemon) Close() error {
+	stacktrace()
 	return l.apiClient.Close()
 }
 
 func (l *localDaemon) VolumeCreate(ctx context.Context, opts volume.VolumeCreateBody) (types.Volume, error) {
+	stacktrace()
+
 	return l.apiClient.VolumeCreate(ctx, opts)
 }
 
 func (l *localDaemon) VolumeRemove(ctx context.Context, id string) error {
+	stacktrace()
+
 	return l.apiClient.VolumeRemove(ctx, id, false)
 }
 
 func (l *localDaemon) ContainerInspect(ctx context.Context, id string) (types.ContainerJSON, error) {
+	stacktrace()
 	return l.apiClient.ContainerInspect(ctx, id)
 }
 
@@ -176,6 +191,7 @@ func (l *localDaemon) ContainerList(ctx context.Context, options types.Container
 
 // ContainerLogs streams logs line by line from a container in the local daemon to the provided PipeWriter.
 func (l *localDaemon) ContainerLogs(ctx context.Context, w *io.PipeWriter, id string) error {
+	stacktrace()
 	r, err := l.apiClient.ContainerLogs(ctx, id, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Follow: true})
 	if err != nil {
 		return err
@@ -194,12 +210,14 @@ func (l *localDaemon) ContainerLogs(ctx context.Context, w *io.PipeWriter, id st
 }
 
 func (l *localDaemon) ContainerExists(ctx context.Context, name string) bool {
+	stacktrace()
 	_, err := l.apiClient.ContainerInspect(ctx, name)
 	return err == nil
 }
 
 // Delete stops, removes, and prunes a running container
 func (l *localDaemon) Delete(ctx context.Context, out io.Writer, id string) error {
+	stacktrace()
 	if err := l.apiClient.ContainerStop(ctx, id, nil); err != nil {
 		log.Entry(ctx).Warnf("unable to stop running container: %s", err.Error())
 	}
@@ -215,6 +233,7 @@ func (l *localDaemon) Delete(ctx context.Context, out io.Writer, id string) erro
 
 // Run creates a container from a given image reference, and returns a wait channel and the container ID.
 func (l *localDaemon) Run(ctx context.Context, out io.Writer, opts ContainerCreateOpts) (<-chan container.ContainerWaitOKBody, <-chan error, string, error) {
+	stacktrace()
 	if opts.ContainerConfig == nil {
 		return nil, nil, "", fmt.Errorf("cannot call Run with empty container config")
 	}
@@ -240,6 +259,7 @@ func (l *localDaemon) Run(ctx context.Context, out io.Writer, opts ContainerCrea
 }
 
 func (l *localDaemon) NetworkCreate(ctx context.Context, name string) error {
+	stacktrace()
 	nr, err := l.apiClient.NetworkList(ctx, types.NetworkListOptions{})
 	if err != nil {
 		return err
@@ -261,16 +281,19 @@ func (l *localDaemon) NetworkCreate(ctx context.Context, name string) error {
 }
 
 func (l *localDaemon) NetworkRemove(ctx context.Context, name string) error {
+	stacktrace()
 	return l.apiClient.NetworkRemove(ctx, name)
 }
 
 // ServerVersion retrieves the version information from the server.
 func (l *localDaemon) ServerVersion(ctx context.Context) (types.Version, error) {
+	stacktrace()
 	return l.apiClient.ServerVersion(ctx)
 }
 
 // ConfigFile retrieves and caches image configurations.
 func (l *localDaemon) ConfigFile(ctx context.Context, image string) (*v1.ConfigFile, error) {
+	stacktrace()
 	l.imageCacheLock.Lock()
 	defer l.imageCacheLock.Unlock()
 
@@ -299,6 +322,7 @@ func (l *localDaemon) ConfigFile(ctx context.Context, image string) (*v1.ConfigF
 }
 
 func (l *localDaemon) CheckCompatible(a *latest.DockerArtifact) error {
+	stacktrace()
 	if len(a.Secrets) > 0 || a.SSH != "" {
 		return fmt.Errorf("docker build options, secrets and ssh, require BuildKit - set `useBuildkit: true` in your config, or run with `DOCKER_BUILDKIT=1`")
 	}
@@ -307,6 +331,7 @@ func (l *localDaemon) CheckCompatible(a *latest.DockerArtifact) error {
 
 // Build performs a docker build and returns the imageID.
 func (l *localDaemon) Build(ctx context.Context, out io.Writer, workspace string, artifact string, a *latest.DockerArtifact, opts BuildOptions) (string, error) {
+	stacktrace()
 	log.Entry(ctx).Debugf("Running docker build: context: %s, dockerfile: %s", workspace, a.DockerfilePath)
 
 	if err := l.CheckCompatible(a); err != nil {
@@ -398,12 +423,14 @@ func (l *localDaemon) Build(ctx context.Context, out io.Writer, workspace string
 
 // streamDockerMessages streams formatted json output from the docker daemon
 func streamDockerMessages(dst io.Writer, src io.Reader, auxCallback func(jsonmessage.JSONMessage)) error {
+	stacktrace()
 	termFd, isTerm := term.IsTerminal(dst)
 	return jsonmessage.DisplayJSONMessagesStream(src, dst, termFd, isTerm, auxCallback)
 }
 
 // Push pushes an image reference to a registry. Returns the image digest.
 func (l *localDaemon) Push(ctx context.Context, out io.Writer, ref string) (string, error) {
+	stacktrace()
 	registryAuth, err := l.encodedRegistryAuth(ctx, DefaultAuthHelper, ref)
 	if err != nil {
 		return "", fmt.Errorf("getting auth config for %q: %w", ref, err)
@@ -454,6 +481,7 @@ func (l *localDaemon) Push(ctx context.Context, out io.Writer, ref string) (stri
 
 // isAlreadyPushed quickly checks if the local image has already been pushed.
 func (l *localDaemon) isAlreadyPushed(ctx context.Context, ref, registryAuth string) (bool, string, error) {
+	stacktrace()
 	localImage, _, err := l.apiClient.ImageInspectWithRaw(ctx, ref)
 	if err != nil {
 		return false, "", err
@@ -482,6 +510,7 @@ func (l *localDaemon) isAlreadyPushed(ctx context.Context, ref, registryAuth str
 
 // Pull pulls an image reference from a registry.
 func (l *localDaemon) Pull(ctx context.Context, out io.Writer, ref string, platform v1.Platform) error {
+	stacktrace()
 	// We first try pulling the image with credentials.  If that fails then retry
 	// without credentials in case the image is public.
 
@@ -524,6 +553,7 @@ func (l *localDaemon) Pull(ctx context.Context, out io.Writer, ref string, platf
 
 // Load loads an image from a tar file. Returns the imageID for the loaded image.
 func (l *localDaemon) Load(ctx context.Context, out io.Writer, input io.Reader, ref string) (string, error) {
+	stacktrace()
 	resp, err := l.apiClient.ImageLoad(ctx, input, false)
 	if err != nil {
 		return "", fmt.Errorf("loading image into docker daemon: %w", err)
@@ -539,6 +569,7 @@ func (l *localDaemon) Load(ctx context.Context, out io.Writer, input io.Reader, 
 
 // Tag adds a tag to an image.
 func (l *localDaemon) Tag(ctx context.Context, image, ref string) error {
+	stacktrace()
 	return l.apiClient.ImageTag(ctx, image, ref)
 }
 
@@ -548,6 +579,7 @@ func (l *localDaemon) Tag(ctx context.Context, image, ref string) error {
 // So, the solution we chose is to create a tag, just for Skaffold, from
 // the imageID, and use that in the manifests.
 func (l *localDaemon) TagWithImageID(ctx context.Context, ref string, imageID string) (string, error) {
+	stacktrace()
 	parsed, err := ParseReference(ref)
 	if err != nil {
 		return "", err
@@ -567,6 +599,7 @@ func (l *localDaemon) TagWithImageID(ctx context.Context, ref string, imageID st
 
 // ImageID returns the image ID for a corresponding reference.
 func (l *localDaemon) ImageID(ctx context.Context, ref string) (string, error) {
+	stacktrace()
 	image, _, err := l.apiClient.ImageInspectWithRaw(ctx, ref)
 	if err != nil {
 		if client.IsErrNotFound(err) {
@@ -579,15 +612,18 @@ func (l *localDaemon) ImageID(ctx context.Context, ref string) (string, error) {
 }
 
 func (l *localDaemon) ImageExists(ctx context.Context, ref string) bool {
+	stacktrace()
 	_, _, err := l.apiClient.ImageInspectWithRaw(ctx, ref)
 	return err == nil
 }
 
 func (l *localDaemon) ImageInspectWithRaw(ctx context.Context, image string) (types.ImageInspect, []byte, error) {
+	stacktrace()
 	return l.apiClient.ImageInspectWithRaw(ctx, image)
 }
 
 func (l *localDaemon) ImageRemove(ctx context.Context, image string, opts types.ImageRemoveOptions) ([]types.ImageDeleteResponseItem, error) {
+	stacktrace()
 	for i := 0; i < retries; i++ {
 		resp, err := l.apiClient.ImageRemove(ctx, image, opts)
 		if err == nil {
@@ -602,12 +638,14 @@ func (l *localDaemon) ImageRemove(ctx context.Context, image string, opts types.
 }
 
 func (l *localDaemon) ImageList(ctx context.Context, ref string) ([]types.ImageSummary, error) {
+	stacktrace()
 	return l.apiClient.ImageList(ctx, types.ImageListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", ref)),
 	})
 }
 
 func (l *localDaemon) DiskUsage(ctx context.Context) (uint64, error) {
+	stacktrace()
 	usage, err := l.apiClient.DiskUsage(ctx)
 	if err != nil {
 		return 0, err
@@ -616,6 +654,7 @@ func (l *localDaemon) DiskUsage(ctx context.Context) (uint64, error) {
 }
 
 func ToCLIBuildArgs(a *latest.DockerArtifact, evaluatedArgs map[string]*string) ([]string, error) {
+	stacktrace()
 	var args []string
 	var keys []string
 	for k := range evaluatedArgs {
@@ -683,6 +722,7 @@ func ToCLIBuildArgs(a *latest.DockerArtifact, evaluatedArgs map[string]*string) 
 }
 
 func (l *localDaemon) Prune(ctx context.Context, images []string, pruneChildren bool) ([]string, error) {
+	stacktrace()
 	var pruned []string
 	var errRt error
 	for _, id := range images {
